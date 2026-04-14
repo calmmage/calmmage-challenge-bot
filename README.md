@@ -1,91 +1,81 @@
-# Botspot Template
+# Calmmage Sleep Challenge Bot
 
-A template for creating Telegram bots using [botspot](https://github.com/calmmage/botspot) - a framework built on top of aiogram that provides useful components and utilities.
+Telegram bot that runs **sleep challenges**: participants pick bed/wake deadlines, confirm each night and morning with a message or video note (кружочек), and get scored (1 / 0.5 / 0) per day with a win-streak that breaks on two half-fails in a row.
+
+Bot: `@calmmage_sleep_challenge_bot` · built on [botspot](https://github.com/calmmage/botspot).
 
 ## Features
 
-- 🚀 Quick setup with minimal boilerplate
-- 🛠 Built-in components for common bot features
-- 🔧 Easy configuration via environment variables
-- 📝 Command menu management out of the box
-- ⚡ Error handling and reporting
-- 🔍 Bot URL printing for easy testing
+- Multi-user, multi-challenge — admins create challenge events, users register via DM with `/join <code>`.
+- Per-user timezone setup (geo / current time / manual).
+- Three setup flows: guided (usual time → light/medium/hard), manual, defaults.
+- Deadlines can only be tightened (`/tighten_bed`, `/tighten_wake`), never relaxed.
+- Challenge-day pivots at 14:00 local to keep evening+morning as one day.
+- Scheduled reminders, per-user day finalization, daily group stats (08:00), weekly leaderboard (Sun 20:00).
+- Service-account Telethon client polls participants' "last seen" as a fallback signal (needs `/service_auth` once).
 
-## Quick Start
+## Quick start
 
-1. Clone this template:
 ```bash
-git clone https://github.com/calmmage/botspot-template.git your-bot-name
-cd your-bot-name
-```
-
-2. Install dependencies:
-```bash
-poetry install
-```
-
-3. Set up your environment:
-```bash
+make setup
 cp example.env .env
-# Edit .env with your bot token and settings
+# fill TELEGRAM_BOT_TOKEN, BOTSPOT_MONGO_DATABASE_*, optionally SLEEP_BOT_SERVICE_*
+make run
 ```
 
-4. Run the bot:
-```bash
-poetry run python run.py
+Then in Telegram:
+
+- **Admin:** `/admin_new_challenge` → wizard. Add the bot to a group chat, `/bind_here <code>`, then `/admin_start <code>`.
+- **Participant:** DM the bot `/join <code>` → timezone → setup flow → proof choice (if policy is `user_choice`).
+- **Daily:** reply with text or a video note in the evening (bed) and morning (wake).
+
+## Architecture
+
+```
+src/
+├── _app.py                 # AppConfig (env)
+├── bot.py                  # BotManager wiring + startup
+├── models.py               # Pydantic: Challenge, ChallengeUser, SleepLog, CheckIn
+├── db.py                   # Motor-backed repo
+├── scoring.py              # score_day, update_streak (pure)
+├── setup_flows.py          # light/medium/hard deadline math (pure)
+├── time_utils.py           # challenge-day pivot, tz inference (pure)
+├── router.py               # /start, /help
+├── routers/
+│   ├── admin.py            # /admin_new_challenge, /admin_start, /bind_here, …
+│   ├── registration.py     # /join wizard
+│   ├── checkins.py         # text/video-note → bed/wake, /tighten_*, /status, /history
+│   └── group.py            # write-only group redirect
+├── scheduler_jobs.py       # APScheduler jobs
+└── service_account/
+    ├── client.py           # shared Telethon client singleton
+    ├── setup_command.py    # /service_auth
+    └── jobs.py             # 15-min online polling
 ```
 
-## Project Structure
+## Scoring
 
-```
-.
-├── app/
-│   ├── _app.py          # Core app
-│   ├── bot.py           # Bot setup & launcher
-│   ├── router.py          
-│   └── __init__.py
-├── example.env         # Example environment variables
-├── pyproject.toml      # Project dependencies
-├── README.md
-├── Dockerfile
-├── docker-compose.yaml
-└── run.py              # Main entry point - for docker etc.
-```
+- Both bed + wake on-time → **1.0**
+- Both present, at least one late → **0.5**
+- Anything missing → **0.0**
+- Streak resets on `0`, also on a second consecutive `0.5`.
 
-## Configuration
+## Bonus: share online status with the service account
 
-The template uses environment variables for configuration. See `example.env` for available options:
+Instructions live behind `/how_to_share_online`. TL;DR: add the service account to Telegram contacts and set *Last Seen & Online → My Contacts*.
 
-- `TELEGRAM_BOT_TOKEN`: Your bot token from @BotFather
-- `BOTSPOT_PRINT_BOT_URL_ENABLED`: Print bot URL on startup
-- `BOTSPOT_ERROR_HANDLER_ENABLED`: Enable error handling
-- `BOTSPOT_BOT_COMMANDS_MENU_ENABLED`: Enable command menu
-- And more...
-
-## Development
-
-1. Install pre-commit hooks:
-```bash
-pre-commit install
-```
-
-2. Run tests:
-```bash
-poetry run pytest
-```
-
-## Docker Support
-
-Build and run with Docker:
+## Testing
 
 ```bash
-docker-compose up --build
+make test
 ```
 
-## License
+Pure-function tests cover scoring, streak, tightening, guided-flow math, and challenge-day bucketing.
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+## Docker
 
-## Contributing
+```bash
+docker compose up --build
+```
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Requires Mongo; add a `mongo` service to `docker-compose.yaml` or set `BOTSPOT_MONGO_DATABASE_CONN_STR` to an external instance.

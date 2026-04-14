@@ -1,0 +1,84 @@
+from datetime import date, datetime
+
+from bson import ObjectId
+
+from src.models import CheckIn, SleepLog
+from src.scoring import score_day, update_streak
+
+
+def _log(bed: CheckIn | None, wake: CheckIn | None) -> SleepLog:
+    return SleepLog(
+        user_id=1,
+        challenge_id=ObjectId(),
+        date=date(2026, 4, 14),
+        bed=bed,
+        wake=wake,
+    )
+
+
+def test_both_ontime_text_or_video_scores_one():
+    log = _log(
+        CheckIn(ts=datetime(2026, 4, 13, 23, 0), kind="text", on_time=True),
+        CheckIn(ts=datetime(2026, 4, 14, 7, 0), kind="video_note", on_time=True),
+    )
+    assert score_day(log, "text_or_video", "text_or_video") == 1.0
+
+
+def test_late_counts_as_half():
+    log = _log(
+        CheckIn(ts=datetime(2026, 4, 13, 23, 45), kind="text", on_time=False),
+        CheckIn(ts=datetime(2026, 4, 14, 7, 0), kind="video_note", on_time=True),
+    )
+    assert score_day(log, "text_or_video", "text_or_video") == 0.5
+
+
+def test_missing_wake_is_zero():
+    log = _log(
+        CheckIn(ts=datetime(2026, 4, 13, 23, 0), kind="text", on_time=True),
+        None,
+    )
+    assert score_day(log, "text_or_video", "text_or_video") == 0.0
+
+
+def test_text_fails_video_only_policy():
+    log = _log(
+        CheckIn(ts=datetime(2026, 4, 13, 23, 0), kind="text", on_time=True),
+        CheckIn(ts=datetime(2026, 4, 14, 7, 0), kind="video_note", on_time=True),
+    )
+    assert score_day(log, "video_only", "video_only") == 0.0
+
+
+def test_user_choice_defaults_to_text_or_video_when_unset():
+    log = _log(
+        CheckIn(ts=datetime(2026, 4, 13, 23, 0), kind="text", on_time=True),
+        CheckIn(ts=datetime(2026, 4, 14, 7, 0), kind="text", on_time=True),
+    )
+    assert score_day(log, "user_choice", "user_choice") == 1.0
+
+
+def test_user_choice_video_only_rejects_text():
+    log = _log(
+        CheckIn(ts=datetime(2026, 4, 13, 23, 0), kind="text", on_time=True),
+        CheckIn(ts=datetime(2026, 4, 14, 7, 0), kind="video_note", on_time=True),
+    )
+    assert score_day(log, "user_choice", "user_choice", "video_only", "video_only") == 0.0
+
+
+def test_streak_increments_on_full_win():
+    assert update_streak(5, 1.0, 1.0) == 6
+
+
+def test_streak_resets_on_zero():
+    assert update_streak(5, 0.0, 1.0) == 0
+
+
+def test_streak_resets_on_two_half_fails():
+    assert update_streak(3, 0.5, 0.5) == 0
+
+
+def test_streak_increments_on_half_after_full():
+    assert update_streak(3, 0.5, 1.0) == 4
+
+
+def test_streak_from_zero_with_half_start():
+    assert update_streak(0, 0.5, None) == 1

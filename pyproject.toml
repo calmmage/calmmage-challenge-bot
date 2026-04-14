@@ -21,6 +21,8 @@ dependencies = [
     "langchain-openai",
     "langchain-community",
     "langchain-anthropic",
+    "telethon>=1.36",
+    "timezonefinder>=6.5",
 ]
 
 [build-system]
