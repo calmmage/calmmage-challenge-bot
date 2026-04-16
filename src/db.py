@@ -1,21 +1,40 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any, Optional
 
 from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from src.models import Challenge, ChallengeUser, CheckIn, SleepLog
+
+
+def _to_bson(value: Any) -> Any:
+    """Recursively convert datetime.date (but not datetime.datetime) to datetime
+    so BSON can encode it. BSON has no native date type."""
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    if isinstance(value, dict):
+        return {k: _to_bson(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_bson(v) for v in value]
+    return value
 
 
 def _dump(doc: Any) -> dict:
     data = doc.model_dump(by_alias=True, exclude_none=True)
     if data.get("_id") is None:
         data.pop("_id", None)
-    return data
+    return _to_bson(data)
+
+
+def _bson_date(d: date) -> datetime:
+    return datetime.combine(d, time.min)
 
 
 class Repo:
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: Any):
+        # Accepts any motor/pymongo-async database object — the exact class
+        # depends on the installed pymongo/motor versions.
         self.db = db
         self.challenges = db["challenges"]
         self.users = db["challenge_users"]
@@ -23,7 +42,9 @@ class Repo:
 
     async def ensure_indexes(self) -> None:
         await self.challenges.create_index("code", unique=True)
-        await self.users.create_index([("user_id", 1), ("challenge_id", 1)], unique=True)
+        await self.users.create_index(
+            [("user_id", 1), ("challenge_id", 1)], unique=True
+        )
         await self.logs.create_index(
             [("user_id", 1), ("challenge_id", 1), ("date", 1)], unique=True
         )
@@ -67,11 +88,17 @@ class Repo:
         await self.users.replace_one({"_id": u.id}, data, upsert=True)
         return u.id
 
-    async def get_user(self, user_id: int, challenge_id: ObjectId) -> Optional[ChallengeUser]:
-        doc = await self.users.find_one({"user_id": user_id, "challenge_id": challenge_id})
+    async def get_user(
+        self, user_id: int, challenge_id: ObjectId
+    ) -> Optional[ChallengeUser]:
+        doc = await self.users.find_one(
+            {"user_id": user_id, "challenge_id": challenge_id}
+        )
         return ChallengeUser(**doc) if doc else None
 
-    async def active_users_for_challenge(self, challenge_id: ObjectId) -> list[ChallengeUser]:
+    async def active_users_for_challenge(
+        self, challenge_id: ObjectId
+    ) -> list[ChallengeUser]:
         cursor = self.users.find({"challenge_id": challenge_id, "active": True})
         return [ChallengeUser(**d) async for d in cursor]
 
@@ -84,7 +111,11 @@ class Repo:
     async def upsert_log(self, log: SleepLog) -> None:
         data = _dump(log)
         await self.logs.update_one(
-            {"user_id": log.user_id, "challenge_id": log.challenge_id, "date": log.date},
+            {
+                "user_id": log.user_id,
+                "challenge_id": log.challenge_id,
+                "date": _bson_date(log.date),
+            },
             {"$set": data},
             upsert=True,
         )
@@ -93,7 +124,7 @@ class Repo:
         self, user_id: int, challenge_id: ObjectId, day: date
     ) -> Optional[SleepLog]:
         doc = await self.logs.find_one(
-            {"user_id": user_id, "challenge_id": challenge_id, "date": day}
+            {"user_id": user_id, "challenge_id": challenge_id, "date": _bson_date(day)}
         )
         return SleepLog(**doc) if doc else None
 
@@ -107,17 +138,17 @@ class Repo:
     ) -> None:
         assert field in ("bed", "wake")
         await self.logs.update_one(
-            {"user_id": user_id, "challenge_id": challenge_id, "date": day},
+            {"user_id": user_id, "challenge_id": challenge_id, "date": _bson_date(day)},
             {
                 "$setOnInsert": {
                     "user_id": user_id,
                     "challenge_id": challenge_id,
-                    "date": day,
+                    "date": _bson_date(day),
                     "score": 0.0,
                     "streak_after": 0,
                     "finalized": False,
                 },
-                "$set": {field: check_in.model_dump()},
+                "$set": {field: _to_bson(check_in.model_dump())},
             },
             upsert=True,
         )
@@ -126,12 +157,12 @@ class Repo:
         self, user_id: int, challenge_id: ObjectId, day: date, seen: datetime
     ) -> None:
         await self.logs.update_one(
-            {"user_id": user_id, "challenge_id": challenge_id, "date": day},
+            {"user_id": user_id, "challenge_id": challenge_id, "date": _bson_date(day)},
             {
                 "$setOnInsert": {
                     "user_id": user_id,
                     "challenge_id": challenge_id,
-                    "date": day,
+                    "date": _bson_date(day),
                     "score": 0.0,
                     "streak_after": 0,
                     "finalized": False,

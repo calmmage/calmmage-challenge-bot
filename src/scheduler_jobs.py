@@ -30,9 +30,7 @@ async def _remind_bedtime(user_id: int, deadline_hhmm: str) -> None:
 
 async def _remind_wakeup(user_id: int, deadline_hhmm: str) -> None:
     try:
-        await send_safe(
-            user_id, f"⏰ Wake-up deadline in 30 min ({deadline_hhmm})."
-        )
+        await send_safe(user_id, f"⏰ Wake-up deadline in 30 min ({deadline_hhmm}).")
     except Exception as e:
         logger.warning(f"wake reminder to {user_id} failed: {e}")
 
@@ -49,19 +47,12 @@ async def _finalize_day_for_user(user_id: int, challenge_id) -> None:
     day_to_finalize = challenge_day_for(now_local) - timedelta(days=1)
     log = await repo.get_log(user_id, challenge_id, day_to_finalize)
     if log is None:
-        log = SleepLog(
-            user_id=user_id, challenge_id=challenge_id, date=day_to_finalize
-        )
+        log = SleepLog(user_id=user_id, challenge_id=challenge_id, date=day_to_finalize)
     if log.finalized:
         return
 
-    score = score_day(
-        log,
-        c.bed_proof_policy,
-        c.wake_proof_policy,
-        u.bed_proof_choice,
-        u.wake_proof_choice,
-    )
+    _ = c, u  # challenge/user retained in case future scoring needs their settings
+    score = score_day(log)
 
     previous = await repo.recent_logs(user_id, challenge_id, limit=2)
     # recent_logs is sorted by date desc; we want yesterday-of-yesterday and current streak
@@ -177,7 +168,9 @@ async def schedule_user_jobs(user: ChallengeUser) -> None:
     )
 
 
-async def schedule_challenge_jobs(challenge: Challenge, users: list[ChallengeUser]) -> None:
+async def schedule_challenge_jobs(
+    challenge: Challenge, users: list[ChallengeUser]
+) -> None:
     scheduler = get_scheduler()
     tz = ZoneInfo(users[0].tz) if users else ZoneInfo("UTC")
     scheduler.add_job(
@@ -203,7 +196,7 @@ async def schedule_challenge_jobs(challenge: Challenge, users: list[ChallengeUse
     )
 
 
-async def schedule_all_jobs(repo: Repo, service_client) -> None:
+async def schedule_all_jobs(repo: Repo) -> None:
     active = await repo.list_active_challenges()
     for challenge in active:
         assert challenge.id is not None
@@ -218,7 +211,9 @@ async def schedule_all_jobs(repo: Repo, service_client) -> None:
         except Exception as e:
             logger.warning(f"schedule challenge {challenge.code} failed: {e}")
 
-    if service_client is not None:
+    try:
         from src.service_account.jobs import schedule_online_polling
 
-        await schedule_online_polling(repo, service_client)
+        await schedule_online_polling()
+    except Exception as e:
+        logger.warning(f"schedule online polling failed: {e}")

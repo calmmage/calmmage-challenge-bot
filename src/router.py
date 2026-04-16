@@ -15,10 +15,12 @@ async def start_handler(message: Message, app: App):
     assert message.from_user is not None
     await send_safe(
         message.chat.id,
-        f"Hello, {html.bold(message.from_user.full_name)}!\n"
-        f"Welcome to {app.name}.\n"
-        "Use /join &lt;challenge_code&gt; to enter an active challenge, "
-        "or /help to see what's available.",
+        f"Hi, {html.bold(message.from_user.full_name)}!\n"
+        f"I'm {app.name}. The challenge runs in a <b>group chat</b>:\n"
+        "• /join in the group to enroll (I'll DM you the short setup wizard)\n"
+        "• post 🎥 video notes (кружочки) in the group at bed and wake\n"
+        "• everyone sees everyone's check-ins; I react 👍 / 🥱 and keep score\n\n"
+        "Type /help to see commands.",
     )
 
 
@@ -28,19 +30,20 @@ async def help_handler(message: Message, app: App):
     await send_safe(
         message.chat.id,
         f"<b>{app.name}</b>\n\n"
-        "<b>Participants:</b>\n"
-        "/join &lt;code&gt; — join an active challenge\n"
+        "<b>In the challenge group:</b>\n"
+        "/join — enroll (I'll DM you the setup wizard)\n"
+        "🎥 post a video note at bed and at wake — that's your check-in\n\n"
+        "<b>In DM (settings &amp; private history):</b>\n"
         "/status — today's log, streak, deadlines\n"
         "/history — last 14 days\n"
         "/tighten_bed HH:MM — move bedtime earlier (never later)\n"
         "/tighten_wake HH:MM — move wake-up earlier\n"
-        "/how_to_share_online — instructions for the bonus online-status feature\n\n"
-        "<b>Admin:</b>\n"
+        "/how_to_share_online — bonus 'last seen' setup\n\n"
+        "<b>Admin (DM):</b>\n"
         "/admin_new_challenge — create a challenge\n"
         "/admin_list_challenges\n"
         "/admin_start &lt;code&gt; — activate a challenge\n"
         "/admin_finish &lt;code&gt;\n"
-        "/admin_set_policy &lt;code&gt; wake=video_only|text_or_video|user_choice\n"
-        "/bind_here &lt;code&gt; — bind this group chat to a challenge\n"
-        "/service_auth — authorize the service Telegram account",
+        "/bind_here &lt;code&gt; — bind the current group to a challenge (run in group)\n"
+        "/setup_telethon — authorize the Telethon service account (bonus)",
     )

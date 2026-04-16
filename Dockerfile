@@ -8,10 +8,12 @@ RUN apt-get update \
 
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --group extras --frozen || uv sync --group extras
+COPY pyproject.toml uv.lock* README.md ./
+RUN uv sync --group extras --frozen --no-install-project || uv sync --group extras --no-install-project
 
 COPY . .
+
+RUN uv sync --group extras --frozen || uv sync --group extras
 
 RUN mkdir -p sessions
 

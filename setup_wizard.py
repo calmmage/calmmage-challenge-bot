@@ -83,35 +83,28 @@ KEY_VARS: list[EnvVar] = [
 
 SERVICE_ACCOUNT_VARS: list[EnvVar] = [
     EnvVar(
-        key="SLEEP_BOT_SERVICE_PHONE",
-        prompt="Service Telegram account phone (for 'last online' bonus)",
-        default="+41772184188",
-        section="Service account (optional)",
-        validator=_validate_phone,
-    ),
-    EnvVar(
-        key="SLEEP_BOT_SERVICE_API_ID",
-        prompt="api_id for service account (create at my.telegram.org) — leave blank to skip",
+        key="BOTSPOT_TELETHON_MANAGER_API_ID",
+        prompt="Telethon api_id (my.telegram.org) — leave blank to skip 'last seen' polling",
         default="",
-        section="Service account (optional)",
+        section="Telethon (optional — for 'last seen' bonus)",
         validator=lambda v: None if v == "" else _validate_int(v),
     ),
     EnvVar(
-        key="SLEEP_BOT_SERVICE_API_HASH",
-        prompt="api_hash for service account — leave blank to skip",
+        key="BOTSPOT_TELETHON_MANAGER_API_HASH",
+        prompt="Telethon api_hash — leave blank to skip",
         default="",
         secret=True,
-        section="Service account (optional)",
+        section="Telethon (optional — for 'last seen' bonus)",
     ),
     EnvVar(
-        key="SLEEP_BOT_SERVICE_SESSION_PATH",
-        prompt="Where to store the Telethon session file",
-        default="sessions/service_account",
-        section="Service account (optional)",
+        key="BOTSPOT_TELETHON_MANAGER_SESSIONS_DIR",
+        prompt="Directory for Telethon session files",
+        default="sessions",
+        section="Telethon (optional — for 'last seen' bonus)",
     ),
 ]
 
-# These are fixed enable flags. The wizard writes them automatically — no prompt.
+# Fixed enable flags. The wizard writes them automatically — no prompt.
 STATIC_FLAGS: dict[str, str] = {
     "BOTSPOT_MONGO_DATABASE_ENABLED": "true",
     "BOTSPOT_SCHEDULER_ENABLED": "true",
@@ -121,7 +114,16 @@ STATIC_FLAGS: dict[str, str] = {
     "BOTSPOT_SEND_SAFE_ENABLED": "true",
     "BOTSPOT_ERROR_HANDLER_ENABLED": "true",
     "BOTSPOT_BOT_COMMANDS_MENU_ENABLED": "true",
+    "BOTSPOT_TELETHON_MANAGER_AUTO_AUTH": "true",
 }
+
+
+def _telethon_enabled(values: dict[str, str]) -> str:
+    """Telethon_manager only enables when both api_id AND api_hash are filled;
+    otherwise botspot's initialize() would assert-crash at startup."""
+    has_id = bool(values.get("BOTSPOT_TELETHON_MANAGER_API_ID", "").strip())
+    has_hash = bool(values.get("BOTSPOT_TELETHON_MANAGER_API_HASH", "").strip())
+    return "true" if (has_id and has_hash) else "false"
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -147,9 +149,11 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
     ]
     for var in KEY_VARS:
         v = values.get(var.key, "")
-        lines.append(f'{var.key}="{v}"' if v and (" " in v or "@" in v) else f"{var.key}={v}")
+        lines.append(
+            f'{var.key}="{v}"' if v and (" " in v or "@" in v) else f"{var.key}={v}"
+        )
     lines.append("")
-    lines.append("# ========== Service account (optional bonus) ==========")
+    lines.append("# ========== Telethon (optional — 'last seen' polling) ==========")
     for var in SERVICE_ACCOUNT_VARS:
         v = values.get(var.key, "")
         lines.append(f"{var.key}={v}")
@@ -157,6 +161,7 @@ def _write_env_file(path: Path, values: dict[str, str]) -> None:
     lines.append("# ========== Botspot enable flags (auto-managed) ==========")
     for k, v in STATIC_FLAGS.items():
         lines.append(f"{k}={v}")
+    lines.append(f"BOTSPOT_TELETHON_MANAGER_ENABLED={_telethon_enabled(values)}")
     lines.append("")
     path.write_text("\n".join(lines) + "\n")
 
@@ -238,10 +243,13 @@ def run_wizard(force: bool, yes: bool) -> None:
     print("\nNext steps:")
     print("  1. Start MongoDB  (docker compose up -d mongodb)")
     print("  2. Run the bot    (make run  or  uv run python src/bot.py --debug)")
-    if not values.get("SLEEP_BOT_SERVICE_API_ID"):
-        print("  3. Service account skipped — bot will start without /service_auth capability.")
+    if not values.get("BOTSPOT_TELETHON_MANAGER_API_ID"):
+        print("  3. Telethon skipped — 'last seen' polling disabled.")
     else:
-        print("  3. In Telegram as admin: /service_auth  (one-time)")
+        print(
+            "  3. In DM with the bot (as admin): /setup_telethon\n"
+            "     Paste the service phone (+41772184188), code, and 2FA password if set."
+        )
 
 
 def main() -> None:
@@ -250,7 +258,9 @@ def main() -> None:
         "--force", action="store_true", help="Re-prompt even for already-set values."
     )
     parser.add_argument(
-        "--yes", action="store_true", help="Accept defaults without prompting (for non-interactive)."
+        "--yes",
+        action="store_true",
+        help="Accept defaults without prompting (for non-interactive).",
     )
     args = parser.parse_args()
     run_wizard(force=args.force, yes=args.yes)

@@ -222,3 +222,6 @@ GEMINI.md
 
 # AI instruction files (generated)
 .claude
+
+# local obsidian project symlink
+/project
