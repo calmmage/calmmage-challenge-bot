@@ -2,7 +2,7 @@ from aiogram import Router, html
 from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 from botspot import commands_menu
-from botspot.utils import send_safe
+from botspot.utils import is_admin, send_safe
 
 from src._app import App
 
@@ -13,15 +13,29 @@ router = Router(name="main")
 @router.message(CommandStart(), lambda m: m.chat.type == "private")
 async def start_handler(message: Message, app: App):
     assert message.from_user is not None
-    await send_safe(
-        message.chat.id,
-        f"Hi, {html.bold(message.from_user.full_name)}!\n"
-        f"I'm {app.name}. The challenge runs in a <b>group chat</b>:\n"
-        "• /join in the group to enroll (I'll DM you the short setup wizard)\n"
-        "• post 🎥 video notes (кружочки) in the group at bed and wake\n"
-        "• everyone sees everyone's check-ins; I react 👍 / 🥱 and keep score\n\n"
-        "Type /help to see commands.",
-    )
+    name = html.bold(message.from_user.full_name)
+    if is_admin(message.from_user):
+        text = (
+            f"Hi {name} 👋 — you're an <b>admin</b>.\n\n"
+            "<b>Quickstart:</b>\n"
+            "• /admin_new_challenge — create a challenge (here in DM)\n"
+            "• in the group: /bind_here — bind the challenge\n"
+            "• /admin_start &lt;code&gt; — go live\n\n"
+            "<b>More:</b> /admin_list_challenges · /admin_finish · /help"
+        )
+    else:
+        text = (
+            f"Hi {name}!\n\n"
+            "<b>How to join:</b>\n"
+            "• /join — pick your challenge (buttons)\n"
+            "• follow the short setup wizard\n\n"
+            "<b>How to participate:</b>\n"
+            "• post 🎥 video notes (кружочки) in the challenge group\n"
+            "• one at bedtime, one at wake-up → that's your check-in\n"
+            "• 👍 on time / 🥱 late\n\n"
+            "Type /help for more."
+        )
+    await send_safe(message.chat.id, text)
 
 
 @commands_menu.botspot_command("help", "Show help")

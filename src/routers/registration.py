@@ -9,10 +9,16 @@ from datetime import datetime, time
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 from botspot import commands_menu
 from botspot.components.features.user_interactions import ask_user, ask_user_choice
 from botspot.utils import send_safe
+from loguru import logger
 
 from src.db import Repo
 from src.models import Challenge, ChallengeUser
@@ -201,26 +207,88 @@ async def run_setup_wizard(
     return user
 
 
+async def _challenges_user_can_join(
+    bot, repo: Repo, user_id: int
+) -> list[Challenge]:
+    """Active challenges whose bound group the user is actually a member of."""
+    available: list[Challenge] = []
+    for c in await repo.list_active_challenges():
+        if not c.group_chat_id:
+            continue
+        try:
+            member = await bot.get_chat_member(c.group_chat_id, user_id)
+        except Exception as e:
+            logger.debug(f"get_chat_member failed for {c.code}: {e}")
+            continue
+        if member.status in ("left", "kicked"):
+            continue
+        available.append(c)
+    return available
+
+
 # No @botspot_command here — the group router owns the /join menu entry.
 # This handler is a silent DM-side fallback for deep-link re-entries.
 @router.message(Command("join"))
 async def join_in_dm(
     message: Message, command: CommandObject, state: FSMContext, repo: Repo
 ) -> None:
-    """DM-side fallback — the normal flow is /join in the group."""
+    """DM-side /join — with code, joins directly; without, shows buttons."""
     assert message.from_user
+    assert message.bot is not None
     code = (command.args or "").strip()
-    if not code:
+    if code:
+        challenge = await repo.get_challenge_by_code(code)
+        if not challenge or challenge.status != "active":
+            await send_safe(
+                message.chat.id, f"No active challenge with code <code>{code}</code>."
+            )
+            return
+        await run_setup_wizard(message.from_user.id, challenge, state, repo)
+        return
+
+    available = await _challenges_user_can_join(
+        message.bot, repo, message.from_user.id
+    )
+    if not available:
         await send_safe(
             message.chat.id,
-            "Usage: /join &lt;challenge_code&gt;\n"
-            "Normally you'd type this in the challenge group — this is the fallback.",
+            "I don't see you in any active challenge group yet.\n"
+            "Join the challenge group first, then come back and run /join here "
+            "(or /join inside the group).",
         )
         return
+
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=f"Join {c.name}", callback_data=f"join:{c.code}"
+            )
+        ]
+        for c in available
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await send_safe(message.chat.id, "Pick a challenge to join:", reply_markup=kb)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("join:"))
+async def join_callback(
+    callback: CallbackQuery, state: FSMContext, repo: Repo
+) -> None:
+    assert callback.data
+    assert callback.from_user
+    code = callback.data.split(":", 1)[1]
     challenge = await repo.get_challenge_by_code(code)
     if not challenge or challenge.status != "active":
-        await send_safe(
-            message.chat.id, f"No active challenge with code <code>{code}</code>."
-        )
+        await callback.answer(f"No active challenge {code}", show_alert=True)
         return
-    await run_setup_wizard(message.from_user.id, challenge, state, repo)
+    await callback.answer()
+    if callback.message is not None:
+        try:
+            await callback.message.edit_text(
+                f"Starting setup for <b>{challenge.name}</b> "
+                f"(<code>{challenge.code}</code>)…",
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.debug(f"edit_text failed: {e}")
+    await run_setup_wizard(callback.from_user.id, challenge, state, repo)
