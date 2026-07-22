@@ -15,8 +15,8 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from botspot import commands_menu
 from botspot.components.features.user_interactions import ask_user, ask_user_choice
+from botspot.i18n import get_lang, t
 from botspot.utils import send_safe
 from loguru import logger
 
@@ -40,39 +40,39 @@ def _parse_hhmm(s: str) -> time | None:
 async def _ask_timezone(chat_id: int, state: FSMContext) -> str | None:
     method = await ask_user_choice(
         chat_id,
-        "How should I figure out your timezone?",
+        t("ask_tz_method"),
         {
-            "current": "🕐 Send current local time",
-            "manual": "✏️ Type Olson name (e.g. Europe/Zurich)",
+            "current": t("ask_tz_current"),
+            "manual": t("ask_tz_manual"),
         },
         state,
     )
     if method == "current":
-        raw = await ask_user(chat_id, "Your current local time as HH:MM:", state)
+        raw = await ask_user(chat_id, t("ask_tz_current_prompt"), state)
         if not raw:
             return None
         tz = infer_tz_from_offset(raw)
         if tz:
-            await send_safe(chat_id, f"Inferred timezone: <code>{tz}</code>")
+            await send_safe(chat_id, t("tz_inferred", tz=tz))
             return tz
-        await send_safe(chat_id, "Could not infer timezone from that.")
+        await send_safe(chat_id, t("tz_infer_failed"))
         return None
     if method == "manual":
-        raw = await ask_user(chat_id, "Enter Olson name, e.g. Europe/Zurich:", state)
+        raw = await ask_user(chat_id, t("ask_tz_olson_prompt"), state)
         if raw and is_valid_tz(raw.strip()):
             return raw.strip()
-        await send_safe(chat_id, "That's not a known timezone.")
+        await send_safe(chat_id, t("tz_unknown"))
         return None
     return None
 
 
 async def _manual_flow(chat_id: int, state: FSMContext) -> tuple[time, time] | None:
-    bed_raw = await ask_user(chat_id, "Bedtime deadline (HH:MM local):", state)
+    bed_raw = await ask_user(chat_id, t("ask_bed_manual"), state)
     bed = _parse_hhmm(bed_raw or "")
-    wake_raw = await ask_user(chat_id, "Wake-up deadline (HH:MM local):", state)
+    wake_raw = await ask_user(chat_id, t("ask_wake_manual"), state)
     wake = _parse_hhmm(wake_raw or "")
     if not bed or not wake:
-        await send_safe(chat_id, "Couldn't parse those.")
+        await send_safe(chat_id, t("parse_failed"))
         return None
     return bed, wake
 
@@ -81,31 +81,24 @@ async def _guided_flow(
     chat_id: int, state: FSMContext
 ) -> tuple[tuple[time, time] | None, time | None, time | None]:
     """Returns (deadlines, usual_bed, usual_wake)."""
-    bed_raw = await ask_user(
-        chat_id,
-        "What time do you usually go to bed lately (HH:MM)? "
-        "Reply <code>varies</code> if it's all over the place.",
-        state,
-    )
+    bed_raw = await ask_user(chat_id, t("ask_usual_bed"), state)
     if bed_raw and bed_raw.strip().lower() in ("varies", "different", "varied"):
-        await send_safe(
-            chat_id, "Using sensible midnight-ish defaults (bed 23:30, wake 07:30)."
-        )
+        await send_safe(chat_id, t("usual_varies_defaults"))
         return defaults(), None, None
     usual_bed = _parse_hhmm(bed_raw or "")
-    wake_raw = await ask_user(chat_id, "And your usual wake-up time (HH:MM)?", state)
+    wake_raw = await ask_user(chat_id, t("ask_usual_wake"), state)
     usual_wake = _parse_hhmm(wake_raw or "")
     if not usual_bed or not usual_wake:
-        await send_safe(chat_id, "Couldn't parse that. Aborting.")
+        await send_safe(chat_id, t("parse_failed_abort"))
         return None, None, None
     difficulty = await ask_user_choice(
         chat_id,
-        "How much earlier should your deadline be?",
+        t("ask_difficulty"),
         {
-            "light": "Light (−30 min)",
-            "medium": "Medium (−1h) ⭐ recommended",
-            "hard": "Hard (−2h)",
-            "manual": "Manual",
+            "light": t("difficulty_light"),
+            "medium": t("difficulty_medium"),
+            "hard": t("difficulty_hard"),
+            "manual": t("difficulty_manual"),
         },
         state,
         default_choice="medium",
@@ -137,7 +130,7 @@ async def run_setup_wizard(
 
     existing = await repo.get_user(user_id, challenge.id)
     if existing and existing.active:
-        await send_safe(chat_id, "You're already registered in this challenge.")
+        await send_safe(chat_id, t("already_registered"))
         return existing
 
     tz = await _ask_timezone(chat_id, state)
@@ -146,11 +139,11 @@ async def run_setup_wizard(
 
     flow = await ask_user_choice(
         chat_id,
-        "How do you want to set your deadlines?",
+        t("ask_flow"),
         {
-            "guided": "Guided (recommended)",
-            "manual": "Manual — I know my times",
-            "defaults": "Use sensible defaults (23:30 / 07:30)",
+            "guided": t("flow_guided"),
+            "manual": t("flow_manual"),
+            "defaults": t("flow_defaults"),
         },
         state,
         default_choice="guided",
@@ -180,6 +173,7 @@ async def run_setup_wizard(
         usual_bedtime=usual_bed,
         usual_wakeup=usual_wake,
         setup_flow=flow,  # type: ignore[arg-type]
+        lang=get_lang(),
         joined_at=datetime.utcnow(),
         active=True,
     )
@@ -190,19 +184,16 @@ async def run_setup_wizard(
     try:
         await schedule_user_jobs(user)
     except Exception as e:
-        from loguru import logger
-
         logger.warning(f"Could not schedule user jobs: {e}")
 
     await send_safe(
         chat_id,
-        "🎯 You're in.\n"
-        f"Timezone: <code>{tz}</code>\n"
-        f"Bedtime deadline: <b>{bed_deadline.strftime('%H:%M')}</b>\n"
-        f"Wake-up deadline: <b>{wake_deadline.strftime('%H:%M')}</b>\n\n"
-        "Now send 🎥 <b>video notes</b> (кружочки) in the challenge group — "
-        "one when you're in bed, one when you wake up. "
-        "Use /tighten_bed or /tighten_wake to move a deadline earlier.",
+        t(
+            "wizard_done",
+            tz=tz,
+            bed=bed_deadline.strftime("%H:%M"),
+            wake=wake_deadline.strftime("%H:%M"),
+        ),
     )
     return user
 
@@ -240,7 +231,7 @@ async def join_in_dm(
         challenge = await repo.get_challenge_by_code(code)
         if not challenge or challenge.status != "active":
             await send_safe(
-                message.chat.id, f"No active challenge with code <code>{code}</code>."
+                message.chat.id, t("join_no_challenge_with_code", code=code)
             )
             return
         await run_setup_wizard(message.from_user.id, challenge, state, repo)
@@ -250,24 +241,20 @@ async def join_in_dm(
         message.bot, repo, message.from_user.id
     )
     if not available:
-        await send_safe(
-            message.chat.id,
-            "I don't see you in any active challenge group yet.\n"
-            "Join the challenge group first, then come back and run /join here "
-            "(or /join inside the group).",
-        )
+        await send_safe(message.chat.id, t("join_no_group_member"))
         return
 
     rows = [
         [
             InlineKeyboardButton(
-                text=f"Join {c.name}", callback_data=f"join:{c.code}"
+                text=t("join_button", name=c.name),
+                callback_data=f"join:{c.code}",
             )
         ]
         for c in available
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await send_safe(message.chat.id, "Pick a challenge to join:", reply_markup=kb)
+    await send_safe(message.chat.id, t("join_pick"), reply_markup=kb)
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("join:"))
@@ -279,14 +266,15 @@ async def join_callback(
     code = callback.data.split(":", 1)[1]
     challenge = await repo.get_challenge_by_code(code)
     if not challenge or challenge.status != "active":
-        await callback.answer(f"No active challenge {code}", show_alert=True)
+        await callback.answer(
+            t("join_no_active_callback", code=code), show_alert=True
+        )
         return
     await callback.answer()
     if callback.message is not None:
         try:
             await callback.message.edit_text(
-                f"Starting setup for <b>{challenge.name}</b> "
-                f"(<code>{challenge.code}</code>)…",
+                t("join_starting_setup", name=challenge.name, code=challenge.code),
                 parse_mode="HTML",
             )
         except Exception as e:

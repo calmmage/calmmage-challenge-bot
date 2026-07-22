@@ -35,6 +35,12 @@ def _startup_hooks(dp: Dispatcher) -> None:
 def main(debug: bool = False) -> None:
     setup_logger(logger, level="DEBUG" if debug else "INFO")  # type: ignore[arg-type]
 
+    from botspot.i18n import register_strings
+
+    from src.i18n_strings import STRINGS
+
+    register_strings(STRINGS)
+
     dp = Dispatcher()
     dp.include_router(main_router)
     dp.include_router(admin_router)

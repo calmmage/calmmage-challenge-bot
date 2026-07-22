@@ -42,6 +42,7 @@ class ChallengeUser(_BaseDoc):
     usual_bedtime: Optional[time] = None
     usual_wakeup: Optional[time] = None
     setup_flow: SetupFlow = "manual"
+    lang: str = "en"
     joined_at: datetime
     active: bool = True
 

@@ -127,3 +127,10 @@ version = "2.0.3"
 url = "https://github.com/calmmage/botspot-template.git"
 author = "Petr Lavrov <me@petrlavrov.com>"
 description = "A template for creating a bot using botspot"
+
+
+[tool.uv]
+# Make `uv sync` install ALL dependency-groups by default.
+# Without this, plain `uv sync` removes packages outside the main + dev groups.
+# To exclude on demand: `uv sync --no-group <name>`.
+default-groups = ["extras", "dev", "test", "docs"]
