@@ -23,7 +23,7 @@ def _parse_hhmm(s: str) -> time | None:
         return None
 
 
-@commands_menu.botspot_command("tighten_bed", "Move bedtime deadline earlier")
+@commands_menu.botspot_command("tighten_bed", "Move bedtime deadline earlier", visibility="hidden")
 @router.message(Command("tighten_bed"))
 async def tighten_bed(message: Message, command: CommandObject, repo: Repo) -> None:
     assert message.from_user
@@ -50,7 +50,7 @@ async def tighten_bed(message: Message, command: CommandObject, repo: Repo) -> N
     )
 
 
-@commands_menu.botspot_command("tighten_wake", "Move wake deadline earlier")
+@commands_menu.botspot_command("tighten_wake", "Move wake deadline earlier", visibility="hidden")
 @router.message(Command("tighten_wake"))
 async def tighten_wake(message: Message, command: CommandObject, repo: Repo) -> None:
     assert message.from_user
@@ -115,7 +115,7 @@ async def status(message: Message, repo: Repo) -> None:
     )
 
 
-@commands_menu.botspot_command("history", "Last 14 days")
+@commands_menu.botspot_command("history", "Last 14 days", visibility="hidden")
 @router.message(Command("history"))
 async def history(message: Message, repo: Repo) -> None:
     assert message.from_user
@@ -137,7 +137,7 @@ async def history(message: Message, repo: Repo) -> None:
 
 
 @commands_menu.botspot_command(
-    "how_to_share_online", "Instructions for the online-status bonus"
+    "how_to_share_online", "Instructions for the online-status bonus", visibility="hidden"
 )
 @router.message(Command("how_to_share_online"))
 async def how_to_share_online(message: Message) -> None:

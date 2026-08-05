@@ -1,3 +1,4 @@
+import random
 from datetime import date, datetime, timedelta
 
 from aiogram import Router
@@ -17,6 +18,24 @@ from loguru import logger
 
 from src.db import Repo
 from src.models import Challenge
+
+_ADJECTIVES = [
+    "brave", "calm", "swift", "quiet", "bright", "dark", "warm", "cool",
+    "sharp", "deep", "wild", "free", "bold", "kind", "wise", "gold", "iron",
+    "soft", "keen", "full",
+]
+_ANIMALS = [
+    "lion", "wolf", "bear", "hawk", "deer", "fox", "owl", "seal", "lynx",
+    "crow", "elk", "crane", "swan", "dove", "ram", "hare", "boar", "pike",
+    "carp", "lark",
+]
+
+
+def _generate_challenge_code() -> str:
+    now = datetime.now()
+    adj = random.choice(_ADJECTIVES)
+    animal = random.choice(_ANIMALS)
+    return f"{adj}-{animal}-{now.strftime('%b').lower()}-{now.year}"
 
 router = Router(name="admin")
 router.message.filter(AdminFilter())
@@ -77,21 +96,27 @@ async def _ask_end_date(chat_id: int, state: FSMContext, starts_at: date) -> dat
     return _parse_date(raw or "")
 
 
-@commands_menu.botspot_command("admin_new_challenge", "Create a new challenge (admin)")
+@commands_menu.botspot_command("admin_new_challenge", "Create a new challenge (admin)", visibility="admin_only")
 @router.message(Command("admin_new_challenge"))
 async def new_challenge(message: Message, state: FSMContext, repo: Repo) -> None:
     assert message.from_user
     chat_id = message.chat.id
 
-    code = await ask_user(
-        chat_id, "Challenge code (short, unique, e.g. sleep-apr26):", state
-    )
-    if not code:
-        return
-    code = code.strip()
+    # Auto-generate a unique code; retry once on collision.
+    code = _generate_challenge_code()
     if await repo.get_challenge_by_code(code):
-        await send_safe(chat_id, f"Code <code>{code}</code> already exists.")
-        return
+        code = _generate_challenge_code()
+    if await repo.get_challenge_by_code(code):
+        code = await ask_user(
+            chat_id,
+            f"Auto-generated code <code>{code}</code> is already taken. Enter a custom code:",
+            state,
+        )
+        if not code:
+            return
+        code = code.strip()
+
+    await send_safe(chat_id, f"Challenge ID: <code>{code}</code>")
 
     name = await ask_user(chat_id, "Human-readable name:", state) or code
 
@@ -122,7 +147,7 @@ async def new_challenge(message: Message, state: FSMContext, repo: Repo) -> None
     )
 
 
-@commands_menu.botspot_command("admin_list_challenges", "List challenges (admin)")
+@commands_menu.botspot_command("admin_list_challenges", "List challenges (admin)", visibility="admin_only")
 @router.message(Command("admin_list_challenges"))
 async def list_challenges(message: Message, repo: Repo) -> None:
     challenges = await repo.list_challenges()
@@ -139,7 +164,7 @@ async def list_challenges(message: Message, repo: Repo) -> None:
     await send_safe(message.chat.id, "\n".join(lines))
 
 
-@commands_menu.botspot_command("admin_start", "Activate a challenge (admin)")
+@commands_menu.botspot_command("admin_start", "Activate a challenge (admin)", visibility="admin_only")
 @router.message(Command("admin_start"))
 async def start_challenge(message: Message, command: CommandObject, repo: Repo) -> None:
     code = (command.args or "").strip()
@@ -167,7 +192,7 @@ async def start_challenge(message: Message, command: CommandObject, repo: Repo) 
             )
 
 
-@commands_menu.botspot_command("admin_finish", "Finish a challenge (admin)")
+@commands_menu.botspot_command("admin_finish", "Finish a challenge (admin)", visibility="admin_only")
 @router.message(Command("admin_finish"))
 async def finish_challenge(
     message: Message, command: CommandObject, repo: Repo
@@ -189,7 +214,7 @@ async def _unbound_challenges(repo: Repo) -> list[Challenge]:
     ]
 
 
-@commands_menu.botspot_command("bind_here", "Bind this group to a challenge (admin)")
+@commands_menu.botspot_command("bind_here", "Bind this group to a challenge (admin)", visibility="admin_only")
 @router.message(Command("bind_here"))
 async def bind_here(message: Message, command: CommandObject, repo: Repo) -> None:
     code = (command.args or "").strip()

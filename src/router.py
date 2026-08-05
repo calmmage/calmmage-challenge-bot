@@ -38,7 +38,7 @@ async def start_handler(message: Message, app: App):
     await send_safe(message.chat.id, text)
 
 
-@commands_menu.botspot_command("help", "Show help")
+@commands_menu.botspot_command("help", "Show help", visibility="hidden")
 @router.message(Command("help"), lambda m: m.chat.type == "private")
 async def help_handler(message: Message, app: App):
     await send_safe(

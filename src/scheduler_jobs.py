@@ -217,3 +217,10 @@ async def schedule_all_jobs(repo: Repo) -> None:
         await schedule_online_polling()
     except Exception as e:
         logger.warning(f"schedule online polling failed: {e}")
+
+    try:
+        from src.sleep_monitor.jobs import schedule_sleep_monitor
+
+        await schedule_sleep_monitor()
+    except Exception as e:
+        logger.warning(f"schedule sleep monitor failed: {e}")
