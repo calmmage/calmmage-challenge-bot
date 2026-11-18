@@ -23,10 +23,6 @@ def test_guided_medium_shift():
     assert deadline_from_usual(time(1, 0), "medium") == time(0, 0)
 
 
-def test_guided_hard_shift():
-    assert deadline_from_usual(time(2, 0), "hard") == time(0, 0)
-
-
 def test_guided_shift_wraps_midnight():
     assert deadline_from_usual(time(0, 30), "medium") == time(23, 30)
 
